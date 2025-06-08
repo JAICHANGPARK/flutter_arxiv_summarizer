@@ -9,9 +9,14 @@ class ArxivHomeScreen extends StatefulWidget {
 }
 
 class _ArxivHomeScreenState extends State<ArxivHomeScreen> {
+  TextEditingController textEditingController = TextEditingController();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Text("Arxiv Summarizer"),
+      ),
       body: Column(
         children: [
 
