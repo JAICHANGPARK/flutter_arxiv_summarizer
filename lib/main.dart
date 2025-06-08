@@ -21,6 +21,15 @@ class MainApp extends StatelessWidget {
           ),
           elevation: 4,
         ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            shape: RoundedSuperellipseBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
       ),
       home: ArxivHomeScreen(),
     );
