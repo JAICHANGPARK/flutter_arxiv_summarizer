@@ -242,12 +242,22 @@ class ArxivHomeScreen extends ConsumerStatefulWidget {
   ConsumerState<ArxivHomeScreen> createState() => _ArxivHomeScreenState();
 }
 
-class _ArxivHomeScreenState extends ConsumerState<ArxivHomeScreen> {
+class _ArxivHomeScreenState extends ConsumerState<ArxivHomeScreen>
+    with SingleTickerProviderStateMixin {
   final _apiKeyController = TextEditingController();
   final _urlController = TextEditingController();
   String _paperId = '';
   String? _localPdfPath;
   bool _isPdfLoading = false;
+
+  late final TabController menuTabController;
+
+  @override
+  void initState() {
+    // TODO: implement initState
+    super.initState();
+    menuTabController = TabController(length: 2, vsync: this);
+  }
 
   void _loadPaper() async {
     final urlText = _urlController.text.trim();
@@ -308,106 +318,125 @@ class _ArxivHomeScreenState extends ConsumerState<ArxivHomeScreen> {
                   child: const Text("Set Key"),
                 ),
                 const SizedBox(width: 16),
-                Expanded(child: TabBar(tabs: [],)),
+                Expanded(
+                  child: TabBar(
+                    controller: menuTabController,
+                    tabs: [
+                      Tab(text: "Arxiv"),
+                      Tab(text: "URL Context"),
+                    ],
+                  ),
+                ),
               ],
             ),
             const Divider(height: 32),
 
             Expanded(
-              child: Row(
+              child: TabBarView(
+                controller: menuTabController,
                 children: [
-                  Expanded(
-                    flex: 2,
-                    child: DefaultTabController(
-                      length: 2,
-                      child: Column(
-                        children: [
-                          Row(
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: DefaultTabController(
+                          length: 2,
+                          child: Column(
                             children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _urlController,
-                                  decoration: const InputDecoration(
-                                    labelText: "Arxiv Paper ID or URL",
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  onSubmitted: (_) => _loadPaper(),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton(
-                                onPressed: _loadPaper,
-                                child: const Text("Load Paper"),
-                              ),
-                            ],
-                          ),
-
-                          const TabBar(
-                            tabs: [
-                              Tab(text: "PAPER INFO"),
-                              Tab(text: "PDF PREVIEW"),
-                            ],
-                          ),
-                          Expanded(
-                            child: TabBarView(
-                              children: [
-                                if (_paperId.isNotEmpty)
-                                  ArxivInfoPage(paperId: _paperId)
-                                else
-                                  const Center(
-                                    child: Text(
-                                      "Load a paper to see its info.",
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _urlController,
+                                      decoration: const InputDecoration(
+                                        labelText: "Arxiv Paper ID or URL",
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      onSubmitted: (_) => _loadPaper(),
                                     ),
                                   ),
-                                _isPdfLoading
-                                    ? const Center(
-                                        child: CircularProgressIndicator(),
-                                      )
-                                    : _localPdfPath != null
-                                    ? PdfView(
-                                        controller: PdfController(
-                                          document: PdfDocument.openFile(
-                                            _localPdfPath!,
-                                          ),
+                                  const SizedBox(width: 8),
+                                  ElevatedButton(
+                                    onPressed: _loadPaper,
+                                    child: const Text("Load Paper"),
+                                  ),
+                                ],
+                              ),
+
+                              const TabBar(
+                                tabs: [
+                                  Tab(text: "PAPER INFO"),
+                                  Tab(text: "PDF PREVIEW"),
+                                ],
+                              ),
+                              Expanded(
+                                child: TabBarView(
+                                  children: [
+                                    if (_paperId.isNotEmpty)
+                                      ArxivInfoPage(paperId: _paperId)
+                                    else
+                                      const Center(
+                                        child: Text(
+                                          "Load a paper to see its info.",
                                         ),
-                                      )
-                                    : const Center(
-                                        child: Text('PDF will be shown here.'),
                                       ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const VerticalDivider(width: 32),
-                  Expanded(
-                    flex: 3,
-                    child: Consumer(
-                      builder: (context, ref, _) {
-                        final summaryAsync = ref.watch(
-                          summarizedResultProvider,
-                        );
-                        return summaryAsync.when(
-                          loading: () =>
-                              const Center(child: CircularProgressIndicator()),
-                          error: (err, st) =>
-                              Center(child: SelectableText('Error: $err')),
-                          data: (summary) {
-                            if (summary.isEmpty) {
-                              return const Center(
-                                child: Text(
-                                  'Summary will appear here.',
-                                  style: TextStyle(color: Colors.grey),
+                                    _isPdfLoading
+                                        ? const Center(
+                                            child: CircularProgressIndicator(),
+                                          )
+                                        : _localPdfPath != null
+                                        ? PdfView(
+                                            controller: PdfController(
+                                              document: PdfDocument.openFile(
+                                                _localPdfPath!,
+                                              ),
+                                            ),
+                                          )
+                                        : const Center(
+                                            child: Text(
+                                              'PDF will be shown here.',
+                                            ),
+                                          ),
+                                  ],
                                 ),
-                              );
-                            }
-                            return Markdown(data: summary, selectable: true);
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const VerticalDivider(width: 32),
+                      Expanded(
+                        flex: 3,
+                        child: Consumer(
+                          builder: (context, ref, _) {
+                            final summaryAsync = ref.watch(
+                              summarizedResultProvider,
+                            );
+                            return summaryAsync.when(
+                              loading: () => const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                              error: (err, st) =>
+                                  Center(child: SelectableText('Error: $err')),
+                              data: (summary) {
+                                if (summary.isEmpty) {
+                                  return const Center(
+                                    child: Text(
+                                      'Summary will appear here.',
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                  );
+                                }
+                                return Markdown(
+                                  data: summary,
+                                  selectable: true,
+                                );
+                              },
+                            );
                           },
-                        );
-                      },
-                    ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
