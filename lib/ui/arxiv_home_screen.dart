@@ -308,21 +308,7 @@ class _ArxivHomeScreenState extends ConsumerState<ArxivHomeScreen> {
                   child: const Text("Set Key"),
                 ),
                 const SizedBox(width: 16),
-                Expanded(
-                  child: TextField(
-                    controller: _urlController,
-                    decoration: const InputDecoration(
-                      labelText: "Arxiv Paper ID or URL",
-                      border: OutlineInputBorder(),
-                    ),
-                    onSubmitted: (_) => _loadPaper(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _loadPaper,
-                  child: const Text("Load Paper"),
-                ),
+
               ],
             ),
             const Divider(height: 32),
@@ -335,6 +321,26 @@ class _ArxivHomeScreenState extends ConsumerState<ArxivHomeScreen> {
                       length: 2,
                       child: Column(
                         children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _urlController,
+                                  decoration: const InputDecoration(
+                                    labelText: "Arxiv Paper ID or URL",
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  onSubmitted: (_) => _loadPaper(),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: _loadPaper,
+                                child: const Text("Load Paper"),
+                              ),
+                            ],
+                          ),
+
                           const TabBar(
                             tabs: [
                               Tab(text: "PAPER INFO"),
