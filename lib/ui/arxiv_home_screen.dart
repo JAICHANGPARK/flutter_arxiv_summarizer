@@ -132,7 +132,7 @@ Future<ArxivPaper> scrapeArxivPaper(String paperId) async {
 }
 
 class GeminiApiService {
-  final modelName = "gemini-2.5-flash-preview-05-20";
+  final modelName = "gemini-2.5-flash-lite-preview-06-17";
 
   Future<String?> translate(
     String apiKey,
