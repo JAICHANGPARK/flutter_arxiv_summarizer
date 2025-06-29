@@ -308,10 +308,11 @@ class _ArxivHomeScreenState extends ConsumerState<ArxivHomeScreen> {
                   child: const Text("Set Key"),
                 ),
                 const SizedBox(width: 16),
-
+                Expanded(child: TabBar(tabs: [],)),
               ],
             ),
             const Divider(height: 32),
+
             Expanded(
               child: Row(
                 children: [
