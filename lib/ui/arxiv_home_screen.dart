@@ -2,10 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -24,6 +22,7 @@ class GeminiApiKeyState extends _$GeminiApiKeyState {
   void setValue(String s) => state = s;
 }
 
+// Arxiv 논문 요약 Provider
 @riverpod
 class SummarizedResult extends _$SummarizedResult {
   @override
@@ -46,6 +45,31 @@ class SummarizedResult extends _$SummarizedResult {
             targetLanguage,
           ) ??
           '요약 생성에 실패했습니다.';
+    });
+  }
+}
+
+// URL Context 요약 Provider (새로 추가)
+@riverpod
+class UrlContextSummary extends _$UrlContextSummary {
+  @override
+  FutureOr<String> build() => '';
+
+  Future<void> summarizeUrl({
+    required String targetUrl,
+    required String targetLanguage,
+  }) async {
+    state = const AsyncLoading();
+    final geminiApiService = GeminiApiService();
+    final apiKey = ref.read(geminiApiKeyStateProvider);
+
+    state = await AsyncValue.guard(() async {
+      return await geminiApiService.summarizeUrl(
+            apiKey,
+            targetUrl,
+            targetLanguage,
+          ) ??
+          'URL 요약 생성에 실패했습니다.';
     });
   }
 }
@@ -132,8 +156,9 @@ Future<ArxivPaper> scrapeArxivPaper(String paperId) async {
 }
 
 class GeminiApiService {
-  final modelName = "gemini-2.5-flash-lite-preview-06-17";
+  // final modelName = "gemini-2.5-flash-lite-preview-06-17";
 
+  final modelName = "gemini-2.5-flash";
   Future<String?> translate(
     String apiKey,
     String text,
@@ -190,10 +215,11 @@ class GeminiApiService {
       'https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey',
     );
     final headers = {'Content-Type': 'application/json'};
+    final paperUrl = 'https://arxiv.org/pdf/$paperId';
     final prompt =
         """
     **Your Role:** You are a meticulous AI research analyst. Your primary task is to perform a **comprehensive analysis** of the **entire academic paper** located at the URL provided and then generate a detailed, structured summary.
-    **Source Document URL:** https://arxiv.org/pdf/$paperId
+    **Source Document URL:** $paperUrl
     **Context:** The paper is in the fields of: "$subjects".
     **Analysis and Summarization Instructions:**
     1.  **Full Document Analysis:** You MUST access and analyze the **entire content** of the PDF at the URL, from the introduction to the final conclusion. Do not merely summarize the abstract.
@@ -217,7 +243,17 @@ class GeminiApiService {
       ],
       "tools": [
         {"url_context": {}},
+        // {"function_calling_config": {
+        //   "mode": "ANY",
+        //   "allowed_function_names": ["retrieve_urls"]
+        // }}
       ],
+      // "tool_config": {
+      //   "function_calling_config": {
+      //     "mode": "ANY",
+      //     "allowed_function_names": ["retrieve_urls"]
+      //   }
+      // }
     });
     try {
       final response = await http.post(url, headers: headers, body: body);
@@ -229,6 +265,62 @@ class GeminiApiService {
       return '요약 API 호출 실패: ${jsonDecode(response.body)['error']['message']}';
     } catch (e) {
       return '요약 중 오류 발생: $e';
+    }
+  }
+
+  // summarizeUrlContext -> summarizeUrl로 변경 및 범용 프롬프트 적용
+  Future<String?> summarizeUrl(
+    String apiKey,
+    String targetUrl,
+    String targetLanguage,
+  ) async {
+    if (apiKey.isEmpty) return 'API 키가 설정되지 않았습니다.';
+    if (targetUrl.isEmpty) return '요약할 URL을 입력해주세요.';
+
+    final url = Uri.parse(
+      'https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey',
+    );
+    final headers = {'Content-Type': 'application/json'};
+    final prompt =
+        """
+    **Your Role:** You are a highly efficient AI assistant. Your task is to analyze the content of the provided web page URL and create a structured summary.
+    **Source URL:** $targetUrl
+    **Instructions:**
+    1.  **Full Content Analysis:** Access and thoroughly analyze the main content of the web page at the provided URL.
+    2.  **Structured Summary:** Generate a summary based on the content.
+    **Output Format (Strictly follow in $targetLanguage):**
+    **Part 1: Key Points**
+    - Create a heading titled "핵심 포인트".
+    - Under it, provide three to five bullet points that capture the most important information from the page.
+    **Part 2: Detailed Summary**
+    - Create a heading titled "상세 요약".
+    - Under it, provide a comprehensive, multi-paragraph summary of the page's content.
+    """;
+    final body = jsonEncode({
+      'contents': [
+        {
+          'parts': [
+            {'text': prompt},
+          ],
+        },
+      ],
+      "tools": [
+        {
+          {"url_context": {}},
+        },
+      ],
+    });
+    try {
+      print(body);
+      final response = await http.post(url, headers: headers, body: body);
+      if (response.statusCode == 200) {
+        return jsonDecode(
+          response.body,
+        )['candidates'][0]['content']['parts'][0]['text'];
+      }
+      return 'URL 요약 API 호출 실패: ${jsonDecode(response.body)['error']['message']}';
+    } catch (e) {
+      return 'URL 요약 중 오류 발생: $e';
     }
   }
 }
@@ -244,26 +336,52 @@ class ArxivHomeScreen extends ConsumerStatefulWidget {
 
 class _ArxivHomeScreenState extends ConsumerState<ArxivHomeScreen>
     with SingleTickerProviderStateMixin {
+  // Controllers
   final _apiKeyController = TextEditingController();
-  final _urlController = TextEditingController();
+  final _arxivUrlController = TextEditingController();
+  final _urlContextController = TextEditingController(); // URL Context용 컨트롤러 추가
+
+  // Arxiv Tab State
   String _paperId = '';
   String? _localPdfPath;
   bool _isPdfLoading = false;
 
+  // Common State
   late final TabController menuTabController;
+
+  // 두 탭에서 모두 사용하므로 State 클래스 레벨로 이동
+  final _supportedLanguages = [
+    'Korean',
+    'English',
+    'Japanese',
+    'Chinese',
+    'French',
+    'Spanish',
+    'German',
+  ];
+  String _urlContextLanguage = 'Korean'; // URL Context 탭의 언어 상태
 
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
     menuTabController = TabController(length: 2, vsync: this);
   }
 
+  @override
+  void dispose() {
+    _apiKeyController.dispose();
+    _arxivUrlController.dispose();
+    _urlContextController.dispose();
+    menuTabController.dispose();
+    super.dispose();
+  }
+
   void _loadPaper() async {
-    final urlText = _urlController.text.trim();
+    final urlText = _arxivUrlController.text.trim();
     if (urlText.isEmpty) return;
 
-    final id = urlText.split('/').last;
+    // arxiv.org/abs/xxxx or arxiv.org/pdf/xxxx.pdf or just xxxx 형식 모두 지원
+    final id = urlText.split('/').last.replaceAll('.pdf', '');
     setState(() {
       _paperId = id;
       _isPdfLoading = true;
@@ -288,16 +406,19 @@ class _ArxivHomeScreenState extends ConsumerState<ArxivHomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    // URL Context 요약 상태 감시
+    final urlContextSummaryAsync = ref.watch(urlContextSummaryProvider);
+
     return Scaffold(
-      appBar: AppBar(title: const Text("Arxiv Summarizer")),
+      appBar: AppBar(title: const Text("Content Summarizer")),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
+                  flex: 2,
                   child: TextField(
                     controller: _apiKeyController,
                     decoration: const InputDecoration(
@@ -312,17 +433,21 @@ class _ArxivHomeScreenState extends ConsumerState<ArxivHomeScreen>
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
-                  onPressed: () => ref
-                      .read(geminiApiKeyStateProvider.notifier)
-                      .setValue(_apiKeyController.text),
+                  onPressed: () {
+                    ref
+                        .read(geminiApiKeyStateProvider.notifier)
+                        .setValue(_apiKeyController.text);
+                    FocusScope.of(context).unfocus(); // 키보드 숨기기
+                  },
                   child: const Text("Set Key"),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
+                  flex: 3,
                   child: TabBar(
                     controller: menuTabController,
-                    tabs: [
-                      Tab(text: "Arxiv"),
+                    tabs: const [
+                      Tab(text: "Arxiv Paper"),
                       Tab(text: "URL Context"),
                     ],
                   ),
@@ -330,121 +455,14 @@ class _ArxivHomeScreenState extends ConsumerState<ArxivHomeScreen>
               ],
             ),
             const Divider(height: 32),
-
             Expanded(
               child: TabBarView(
                 controller: menuTabController,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: DefaultTabController(
-                          length: 2,
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _urlController,
-                                      decoration: const InputDecoration(
-                                        labelText: "Arxiv Paper ID or URL",
-                                        border: OutlineInputBorder(),
-                                      ),
-                                      onSubmitted: (_) => _loadPaper(),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  ElevatedButton(
-                                    onPressed: _loadPaper,
-                                    child: const Text("Load Paper"),
-                                  ),
-                                ],
-                              ),
-
-                              const TabBar(
-                                tabs: [
-                                  Tab(text: "PAPER INFO"),
-                                  Tab(text: "PDF PREVIEW"),
-                                ],
-                              ),
-                              Expanded(
-                                child: TabBarView(
-                                  children: [
-                                    if (_paperId.isNotEmpty)
-                                      ArxivInfoPage(paperId: _paperId)
-                                    else
-                                      const Center(
-                                        child: Text(
-                                          "Load a paper to see its info.",
-                                        ),
-                                      ),
-                                    _isPdfLoading
-                                        ? const Center(
-                                            child: CircularProgressIndicator(),
-                                          )
-                                        : _localPdfPath != null
-                                        ? PdfView(
-                                            controller: PdfController(
-                                              document: PdfDocument.openFile(
-                                                _localPdfPath!,
-                                              ),
-                                            ),
-                                          )
-                                        : const Center(
-                                            child: Text(
-                                              'PDF will be shown here.',
-                                            ),
-                                          ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const VerticalDivider(width: 32),
-                      Expanded(
-                        flex: 3,
-                        child: Consumer(
-                          builder: (context, ref, _) {
-                            final summaryAsync = ref.watch(
-                              summarizedResultProvider,
-                            );
-                            return summaryAsync.when(
-                              loading: () => const Center(
-                                child: CircularProgressIndicator(),
-                              ),
-                              error: (err, st) =>
-                                  Center(child: SelectableText('Error: $err')),
-                              data: (summary) {
-                                if (summary.isEmpty) {
-                                  return const Center(
-                                    child: Text(
-                                      'Summary will appear here.',
-                                      style: TextStyle(color: Colors.grey),
-                                    ),
-                                  );
-                                }
-                                return Markdown(
-                                  data: summary,
-                                  selectable: true,
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Expanded(child: TextFormField()),
-                      VerticalDivider(),
-                      Expanded(child: Container()),
-                    ],
-                  )
+                  // --- Arxiv Tab ---
+                  _buildArxivTab(),
+                  // --- URL Context Tab (새로 구현) ---
+                  _buildUrlContextTab(urlContextSummaryAsync),
                 ],
               ),
             ),
@@ -453,33 +471,250 @@ class _ArxivHomeScreenState extends ConsumerState<ArxivHomeScreen>
       ),
     );
   }
+
+  Widget _buildArxivTab() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 2,
+          child: DefaultTabController(
+            length: 2,
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _arxivUrlController,
+                        decoration: const InputDecoration(
+                          labelText: "Arxiv Paper ID or URL",
+                          border: OutlineInputBorder(),
+                        ),
+                        onSubmitted: (_) => _loadPaper(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _loadPaper,
+                      child: const Text("Load"),
+                    ),
+                  ],
+                ),
+                const TabBar(
+                  tabs: [
+                    Tab(text: "PAPER INFO"),
+                    Tab(text: "PDF PREVIEW"),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      if (_paperId.isNotEmpty)
+                        ArxivInfoPage(
+                          paperId: _paperId,
+                          supportedLanguages: _supportedLanguages,
+                        )
+                      else
+                        const Center(
+                          child: Text("Load a paper to see its info."),
+                        ),
+                      _isPdfLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : _localPdfPath != null
+                          ? PdfView(
+                              controller: PdfController(
+                                document: PdfDocument.openFile(_localPdfPath!),
+                              ),
+                            )
+                          : const Center(
+                              child: Text('PDF will be shown here.'),
+                            ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const VerticalDivider(width: 32),
+        Expanded(
+          flex: 3,
+          child: Consumer(
+            builder: (context, ref, _) {
+              final summaryAsync = ref.watch(summarizedResultProvider);
+              return summaryAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (err, st) =>
+                    Center(child: SelectableText('Error: $err')),
+                data: (summary) {
+                  if (summary.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'Summary will appear here.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    );
+                  }
+                  return Markdown(data: summary, selectable: true);
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUrlContextTab(AsyncValue<String> summaryAsync) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // --- Left Pane: Input ---
+        Expanded(
+          flex: 2,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _urlContextController,
+                  decoration: const InputDecoration(
+                    labelText: "URL to summarize",
+                    hintText: "https://example.com/article",
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Text("Language: "),
+                    const SizedBox(width: 8),
+                    DropdownButton<String>(
+                      value: _urlContextLanguage,
+                      items: _supportedLanguages
+                          .map(
+                            (lang) => DropdownMenuItem(
+                              value: lang,
+                              child: Text(lang),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => _urlContextLanguage = value);
+                        }
+                      },
+                    ),
+                    const Spacer(),
+                    ElevatedButton.icon(
+                      onPressed: summaryAsync.isLoading
+                          ? null
+                          : () {
+                              ref
+                                  .read(urlContextSummaryProvider.notifier)
+                                  .summarizeUrl(
+                                    targetUrl: _urlContextController.text,
+                                    targetLanguage: _urlContextLanguage,
+                                  );
+                            },
+                      icon: summaryAsync.isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.summarize),
+                      label: const Text('Summarize'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  "Enter any URL and click 'Summarize'. The AI will analyze the page content and provide a summary on the right.",
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const VerticalDivider(width: 32),
+        // --- Right Pane: Output ---
+        Expanded(
+          flex: 3,
+          child: summaryAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, st) => Center(child: SelectableText('Error: $err')),
+            data: (summary) {
+              if (summary.isEmpty) {
+                return const Center(
+                  child: Text(
+                    'URL summary will appear here.',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                );
+              }
+              return Markdown(data: summary, selectable: true);
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class ArxivInfoPage extends ConsumerStatefulWidget {
   final String paperId;
+  final List<String> supportedLanguages;
 
-  const ArxivInfoPage({super.key, required this.paperId});
+  const ArxivInfoPage({
+    super.key,
+    required this.paperId,
+    required this.supportedLanguages,
+  });
 
   @override
   ConsumerState<ArxivInfoPage> createState() => _ArxivInfoPageState();
 }
 
 class _ArxivInfoPageState extends ConsumerState<ArxivInfoPage> {
+  // 1. Future를 저장할 상태 변수 선언
+  late final Future<ArxivPaper> _paperFuture;
   String _selectedLanguage = 'Korean';
-  final _supportedLanguages = [
-    'Korean',
-    'Japanese',
-    'Chinese',
-    'French',
-    'Spanish',
-    'German',
-  ];
+
+  @override
+  void initState() {
+    super.initState();
+    // 2. initState에서 Future를 단 한번만 생성하여 변수에 할당
+    _paperFuture = scrapeArxivPaper(widget.paperId);
+  }
+
+  // (중요) 다른 논문을 로드했을 때 Future를 갱신하기 위한 로직
+  @override
+  void didUpdateWidget(covariant ArxivInfoPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // paperId가 변경되었다면, 새로운 Future를 생성해서 갱신해야 함
+    if (widget.paperId != oldWidget.paperId) {
+      setState(() {
+        _paperFuture = scrapeArxivPaper(widget.paperId);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final summaryAsync = ref.watch(summarizedResultProvider);
+
     return FutureBuilder<ArxivPaper>(
-      future: scrapeArxivPaper(widget.paperId),
+      // 3. build 메서드에서는 상태 변수를 사용
+      future: _paperFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -503,14 +738,16 @@ class _ArxivInfoPageState extends ConsumerState<ArxivInfoPage> {
                 children: [
                   DropdownButton<String>(
                     value: _selectedLanguage,
-                    items: _supportedLanguages
+                    items: widget.supportedLanguages
                         .map(
                           (lang) =>
                               DropdownMenuItem(value: lang, child: Text(lang)),
                         )
                         .toList(),
-                    onChanged: (value) =>
-                        setState(() => _selectedLanguage = value!),
+                    onChanged: (value) {
+                      // setState는 이제 UI의 언어 선택 부분만 다시 그리게 됨
+                      setState(() => _selectedLanguage = value!);
+                    },
                   ),
                   const SizedBox(width: 16),
                   ElevatedButton.icon(
@@ -615,9 +852,15 @@ class _AbstractTileState extends ConsumerState<_AbstractTile> {
   @override
   void didUpdateWidget(covariant _AbstractTile oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // 언어가 변경되었고, 현재 번역된 상태일 때만 자동으로 다시 번역
     if (widget.selectedLanguage != oldWidget.selectedLanguage &&
         _isTranslated) {
       _translate();
+    }
+    // 논문 자체가 바뀌었을 때 초기화
+    if (widget.initialAbstract != oldWidget.initialAbstract) {
+      _showOriginal();
+      _translationCache.clear();
     }
   }
 
