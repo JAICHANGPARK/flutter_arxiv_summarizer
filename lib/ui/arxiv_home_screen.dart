@@ -71,7 +71,7 @@ class ArxivPaper {
 }
 
 Future<ArxivPaper> scrapeArxivPaper(String paperId) async {
-  if (paperId.isEmpty)
+  if (paperId.isEmpty) {
     return ArxivPaper(
       title: 'N/A',
       authors: 'N/A',
@@ -80,6 +80,7 @@ Future<ArxivPaper> scrapeArxivPaper(String paperId) async {
       citeAs: 'N/A',
       submissionHistory: 'N/A',
     );
+  }
   final url = Uri.parse('https://arxiv.org/abs/$paperId');
   final response = await http.get(url);
   if (response.statusCode == 200) {
@@ -437,14 +438,17 @@ class _ArxivInfoPageState extends ConsumerState<ArxivInfoPage> {
     return FutureBuilder<ArxivPaper>(
       future: scrapeArxivPaper(widget.paperId),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting)
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
-        if (snapshot.hasError)
+        }
+        if (snapshot.hasError) {
           return Center(
             child: Text('Failed to scrape paper info: ${snapshot.error}'),
           );
-        if (!snapshot.hasData)
+        }
+        if (!snapshot.hasData) {
           return const Center(child: Text('No data found.'));
+        }
 
         final paper = snapshot.data!;
         return Column(
