@@ -193,7 +193,7 @@ class GeminiApiService {
     final prompt =
         """
     **Your Role:** You are a meticulous AI research analyst. Your primary task is to perform a **comprehensive analysis** of the **entire academic paper** located at the URL provided and then generate a detailed, structured summary.
-    **Source Document URL:** https://arxiv.org/pdf/$paperId
+    **Source Document URL:** https://arxiv.org/html/$paperId
     **Context:** The paper is in the fields of: "$subjects".
     **Analysis and Summarization Instructions:**
     1.  **Full Document Analysis:** You MUST access and analyze the **entire content** of the PDF at the URL, from the introduction to the final conclusion. Do not merely summarize the abstract.
