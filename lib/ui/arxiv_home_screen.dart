@@ -438,6 +438,13 @@ class _ArxivHomeScreenState extends ConsumerState<ArxivHomeScreen>
                       ),
                     ],
                   ),
+                  Row(
+                    children: [
+                      Expanded(child: TextFormField()),
+                      VerticalDivider(),
+                      Expanded(child: Container()),
+                    ],
+                  )
                 ],
               ),
             ),
