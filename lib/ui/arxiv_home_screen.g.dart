@@ -38,5 +38,21 @@ final summarizedResultProvider =
     );
 
 typedef _$SummarizedResult = AutoDisposeAsyncNotifier<String>;
+String _$urlContextSummaryHash() => r'a4f102d21e7da05fae6a5280edb496d8ddc9ca54';
+
+/// See also [UrlContextSummary].
+@ProviderFor(UrlContextSummary)
+final urlContextSummaryProvider =
+    AutoDisposeAsyncNotifierProvider<UrlContextSummary, String>.internal(
+      UrlContextSummary.new,
+      name: r'urlContextSummaryProvider',
+      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+          ? null
+          : _$urlContextSummaryHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+typedef _$UrlContextSummary = AutoDisposeAsyncNotifier<String>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
